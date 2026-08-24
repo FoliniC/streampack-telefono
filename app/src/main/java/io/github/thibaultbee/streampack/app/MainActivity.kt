@@ -1,0 +1,201 @@
+package io.github.thibaultbee.streampack.app
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.pm.ActivityInfo
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.annotation.RequiresPermission
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import io.github.thibaultbee.streampack.app.databinding.ActivityMainBinding
+import io.github.thibaultbee.streampack.app.utils.PermissionsManager
+import io.github.thibaultbee.streampack.app.utils.showDialog
+import io.github.thibaultbee.streampack.app.utils.toast
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.defaultCameraId
+import io.github.thibaultbee.streampack.core.streamers.lifecycle.StreamerLifeCycleObserver
+import kotlinx.coroutines.launch
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var binding: ActivityMainBinding
+    private val viewModel: MainViewModel by viewModels {
+        MainViewModelFactory(this.application)
+    }
+
+    private val streamerRequiredPermissions =
+        listOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO
+        )
+
+    /**
+     * A minimalist permission manager
+     */
+    @SuppressLint("MissingPermission")
+    private val permissionsManager = PermissionsManager(
+        this,
+        streamerRequiredPermissions,
+        onAllGranted = { onPermissionsGranted() },
+        onShowPermissionRationale = { permissions, onRequiredPermissionLastTime ->
+            // Explain why we need permissions
+            showDialog(
+                title = "Permissions denied",
+                message = "Explain why you need to grant $permissions permissions to stream",
+                positiveButtonText = R.string.accept,
+                onPositiveButtonClick = { onRequiredPermissionLastTime() },
+                negativeButtonText = R.string.denied
+            )
+        },
+        onDenied = {
+            showDialog(
+                "Permissions denied",
+                "You need to grant all permissions to stream",
+                positiveButtonText = 0,
+                negativeButtonText = 0
+            )
+        })
+
+    /**
+     * Listen to lifecycle events. So we don't have to stop the streamer manually in `onPause` and release in `onDestroy
+     */
+    private val streamerLifeCycleObserver by lazy { StreamerLifeCycleObserver(viewModel.streamer) }
+
+    private val requestLocalNetworkPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                viewModel.startStream()
+            } else {
+                binding.liveButton.isChecked = false
+                toast("Local network permission denied")
+            }
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        bindProperties()
+    }
+
+    private fun bindProperties() {
+        binding.liveButton.setOnCheckedChangeListener { view, isChecked ->
+            if (view.isPressed) {
+                if (isChecked) {
+                    lifecycleScope.launch {
+                        if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) && viewModel.needsLocalNetworkPermission()) {
+                            Log.i(TAG, "Local network permission is required for Android 37+")
+                            requestLocalNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+                        } else {
+                            viewModel.startStream()
+                        }
+                    }
+                } else {
+                    viewModel.stopStream()
+                }
+            }
+        }
+
+        // Register the lifecycle observer
+        lifecycle.addObserver(streamerLifeCycleObserver)
+
+        // Configure the streamer
+        configureStreamer()
+
+        // Bind events
+        viewModel.closedThrowableLiveData.observe(this) {
+            Log.e(TAG, "Disconnect: $it")
+            toast("Disconnect: ${it.message}")
+        }
+
+        viewModel.pendingConnectionFailedLiveData.observe(this) {
+            Log.e(TAG, "Connection error: $it")
+            toast("Connection error: ${it.message}")
+        }
+
+        viewModel.throwableLiveData.observe(this) {
+            Log.e(TAG, "Error: $it")
+            toast("Error: ${it.message}")
+        }
+
+        viewModel.isStreamingLiveData.observe(this) { isStreaming ->
+            if (isStreaming) {
+                lockOrientation()
+            } else {
+                unlockOrientation()
+            }
+            if (isStreaming) {
+                binding.liveButton.isChecked = true
+            } else if (viewModel.isTryingConnectionLiveData.value == true) {
+                binding.liveButton.isChecked = true
+            } else {
+                binding.liveButton.isChecked = false
+            }
+        }
+
+        viewModel.isTryingConnectionLiveData.observe(this) { isWaitingForConnection ->
+            if (isWaitingForConnection) {
+                binding.liveButton.isChecked = true
+            } else if (viewModel.isStreamingLiveData.value == true) {
+                binding.liveButton.isChecked = true
+            } else {
+                binding.liveButton.isChecked = false
+            }
+        }
+    }
+
+    private fun lockOrientation() {
+        /**
+         * Lock orientation while stream is running to avoid stream interruption if
+         * user turns the device.
+         * For landscape only mode, set [requireActivity().requestedOrientation] to
+         * [ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE].
+         */
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+    }
+
+    private fun unlockOrientation() {
+        requestedOrientation = ApplicationConstants.supportedOrientation
+    }
+
+    override fun onStart() {
+        super.onStart()
+        permissionsManager.requestPermissions()
+    }
+
+    @RequiresPermission(allOf = [Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO])
+    private fun onPermissionsGranted() {
+        setAVSource()
+        setStreamerView()
+    }
+
+    @RequiresPermission(allOf = [Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO])
+    private fun setAVSource() {
+        // Set audio and video sources.
+        viewModel.setAudioSource()
+        viewModel.setCameraId(defaultCameraId)
+    }
+
+    private fun setStreamerView() {
+        lifecycleScope.launch {
+            binding.preview.setVideoSourceProvider(viewModel.streamer) // Bind the streamer to the preview
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun configureStreamer() {
+        viewModel.setAudioConfig()
+        viewModel.setVideoConfig()
+    }
+
+    private fun toast(message: String) {
+        runOnUiThread { applicationContext.toast(message) }
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+}
