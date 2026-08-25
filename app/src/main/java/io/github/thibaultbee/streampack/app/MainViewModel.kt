@@ -12,6 +12,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import io.github.thibaultbee.streampack.app.data.config.StreamConfig
 import io.github.thibaultbee.streampack.app.data.rotation.RotationRepository
 import io.github.thibaultbee.streampack.app.data.storage.StorageRepository
 import io.github.thibaultbee.streampack.app.utils.NetworkUtils
@@ -77,18 +78,26 @@ class MainViewModel(
         }
     }
 
+    fun applyConfig(config: StreamConfig) {
+        storageRepository.setUrl(config.url)
+        setVideoConfig(
+            width = config.videoWidth,
+            height = config.videoHeight,
+            fps = config.videoFps,
+            bitrate = config.videoBitrate
+        )
+        if (config.audioEnabled) {
+            setAudioConfig(bitrate = config.audioBitrate)
+        }
+    }
+
     /**
      * Starts the stream.
-     *
-     * Replace with a valid URL.
      */
     fun startStream() {
         viewModelScope.launch {
             _isTryingConnectionLiveData.postValue(true)
             try {
-                /**
-                 * For SRT, use srt://my.server.url:9998?streamid=myStreamId&passphrase=myPassphrase
-                 */
                 streamer.startStream(storageRepository.urlStringFlow.first())
             } catch (t: Throwable) {
                 _pendingConnectionFailedFlow.emit(t)
@@ -109,21 +118,13 @@ class MainViewModel(
 
     /**
      * Sets the audio configuration.
-     *
-     * You can verify the device supported configuration with [SingleStreamer.getInfo].
      */
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun setAudioConfig() {
-        /**
-         * There are other parameters in the [AudioConfig] such as:
-         * - byteFormat
-         * - enableEchoCanceler
-         * - enableNoiseSuppressor
-         * They will be initialized with an appropriate default value.
-         */
+    fun setAudioConfig(bitrate: Int = 128000) {
         val audioConfig = AudioConfig(
             mimeType = MediaFormat.MIMETYPE_AUDIO_AAC,
             sampleRate = 44100,
+            bitrate = bitrate,
             channelConfig = AudioFormat.CHANNEL_IN_STEREO
         )
 
@@ -134,20 +135,13 @@ class MainViewModel(
 
     /**
      * Sets the video configuration.
-     *
-     * You can verify the device supported configuration with [SingleStreamer.getInfo].
      */
-    fun setVideoConfig() {
-        /**
-         * There are other parameters in the [VideoConfig] such as:
-         * - bitrate
-         * - profile
-         * - level
-         * - gopSize
-         * They will be initialized with an appropriate default value.
-         */
+    fun setVideoConfig(width: Int = 1280, height: Int = 720, fps: Int = 25, bitrate: Int = 2000000) {
         val videoConfig = VideoConfig(
-            mimeType = MediaFormat.MIMETYPE_VIDEO_AVC, resolution = Size(1280, 720), fps = 25
+            mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
+            resolution = Size(width, height),
+            fps = fps,
+            bitrate = bitrate
         )
 
         viewModelScope.launch {
@@ -166,8 +160,6 @@ class MainViewModel(
 
     /**
      * Sets the camera with the given id as the video source.
-     *
-     * @param cameraId The camera id.
      */
     @RequiresPermission(Manifest.permission.CAMERA)
     fun setCameraId(cameraId: String) {
