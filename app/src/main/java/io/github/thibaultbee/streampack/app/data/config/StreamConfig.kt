@@ -7,7 +7,7 @@ import org.json.JSONObject
 import java.io.File
 
 data class StreamConfig(
-    val url: String = "rtsp://10.203.33.72:8890/telefono",
+    val url: String = "rtmp://10.203.33.72:1935/telefono",
     val autostart: Boolean = true,
     val autostartDelayMs: Long = 1000L,
     val autoReconnect: Boolean = true,
@@ -68,13 +68,13 @@ object StreamConfigManager {
         )
 
         for (file in candidatePaths) {
-            if (file.exists() && file.canRead()) {
-                try {
+            try {
+                if (file.exists() && file.canRead()) {
                     val jsonStr = file.readText()
                     val json = JSONObject(jsonStr)
                     Log.i(TAG, "Loading configuration from ${file.absolutePath}")
                     return StreamConfig(
-                        url = json.optString("url", "rtsp://10.203.33.72:8890/telefono"),
+                        url = json.optString("url", "rtmp://10.203.33.72:1935/telefono"),
                         autostart = json.optBoolean("autostart", true),
                         autostartDelayMs = json.optLong("autostart_delay_ms", 1000L),
                         autoReconnect = json.optBoolean("auto_reconnect", true),
@@ -87,9 +87,9 @@ object StreamConfigManager {
                         audioEnabled = json.optBoolean("audio_enabled", true),
                         audioBitrate = json.optInt("audio_bitrate", 128000)
                     )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing config file ${file.absolutePath}: ${e.message}")
                 }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Error parsing config file ${file.absolutePath}: ${e.message}")
             }
         }
 
