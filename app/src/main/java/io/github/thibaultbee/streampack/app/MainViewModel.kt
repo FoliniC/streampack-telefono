@@ -84,10 +84,10 @@ class MainViewModel(
             width = config.videoWidth,
             height = config.videoHeight,
             fps = config.videoFps,
-            bitrate = config.videoBitrate
+            startBitrate = config.videoBitrate
         )
         if (config.audioEnabled) {
-            setAudioConfig(bitrate = config.audioBitrate)
+            setAudioConfig(startBitrate = config.audioBitrate)
         }
     }
 
@@ -120,11 +120,11 @@ class MainViewModel(
      * Sets the audio configuration.
      */
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun setAudioConfig(bitrate: Int = 128000) {
+    fun setAudioConfig(startBitrate: Int = 128000) {
         val audioConfig = AudioConfig(
             mimeType = MediaFormat.MIMETYPE_AUDIO_AAC,
             sampleRate = 44100,
-            bitrate = bitrate,
+            startBitrate = startBitrate,
             channelConfig = AudioFormat.CHANNEL_IN_STEREO
         )
 
@@ -136,12 +136,12 @@ class MainViewModel(
     /**
      * Sets the video configuration.
      */
-    fun setVideoConfig(width: Int = 1280, height: Int = 720, fps: Int = 25, bitrate: Int = 2000000) {
+    fun setVideoConfig(width: Int = 1280, height: Int = 720, fps: Int = 25, startBitrate: Int = 2000000) {
         val videoConfig = VideoConfig(
             mimeType = MediaFormat.MIMETYPE_VIDEO_AVC,
             resolution = Size(width, height),
             fps = fps,
-            bitrate = bitrate
+            startBitrate = startBitrate
         )
 
         viewModelScope.launch {
