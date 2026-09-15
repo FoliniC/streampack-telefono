@@ -20,17 +20,3 @@ class FileLoggingTree(private val context: Application) : Timber.Tree() {
         }
     }
 }
-
-class MyApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        if (BuildConfig.DEBUG) {
-            Timber.plant(Timber.DebugTree())
-        } else {
-            Timber.plant(FileLoggingTree(this))
-        }
-        
-        // Test log to verify FileLoggingTree works
-        Timber.i("TEST: FileLoggingTree initialized - ${logFile.exists()}")
-    }
-}
