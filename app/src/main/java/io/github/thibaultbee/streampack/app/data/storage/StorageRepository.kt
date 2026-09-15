@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class StorageRepository {
-    private val _urlStringFlow = MutableStateFlow("rtmp://10.203.33.72:1935/telefono")
+    private val _urlStringFlow = MutableStateFlow("rtmp://172.18.13.10:1935/live/telefono")
     val urlStringFlow: StateFlow<String> = _urlStringFlow.asStateFlow()
 
     fun setUrl(url: String) {

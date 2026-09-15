@@ -1,5 +1,12 @@
 <resources>
+    <string name="settings">Configurazione</string>
     <string name="app_name">My Streaming App</string>
+    <string name="app_name_versioned">My Streaming App (v1.0.dev)</string>
+    <string name="version_display">v%s (build %d)</string>
     <string name="denied">Denied</string>
     <string name="accept">Accept</string>
+    <string name="config_save">Salva</string>
+    <string name="config_cancel">Annulla</string>
+    <string name="config_title">Configurazione StreamPack</string>
+    <string name="config_saved">Configurazione salvata</string>
 </resources>

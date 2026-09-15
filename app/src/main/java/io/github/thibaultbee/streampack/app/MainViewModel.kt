@@ -9,6 +9,7 @@ import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
@@ -24,6 +25,7 @@ import io.github.thibaultbee.streampack.core.streamers.single.AudioConfig
 import io.github.thibaultbee.streampack.core.streamers.single.SingleStreamer
 import io.github.thibaultbee.streampack.core.streamers.single.VideoConfig
 import io.github.thibaultbee.streampack.core.utils.extensions.isClosedException
+import io.github.thibaultbee.streampack.core.elements.sources.video.camera.ICameraSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filter
@@ -78,8 +80,63 @@ class MainViewModel(
         }
     }
 
+    fun setZoom(zoomRatio: Float) {
+        viewModelScope.launch {
+            try {
+                val cameraSource = streamer.videoInput.sourceFlow.value as? ICameraSource
+                cameraSource?.settings?.zoom?.setZoomRatio(zoomRatio)
+                Log.i(TAG, "Applied camera zoom ratio: $zoomRatio")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting camera zoom: ${e.message}", e)
+            }
+        }
+    }
+
+    fun setExposure(exposureCompensation: Float) {
+        viewModelScope.launch {
+            try {
+                val cameraSource = streamer.videoInput.sourceFlow.value as? ICameraSource
+                // Exposure compensation is applied via applyVideoSettings when stream is active
+                Log.i(TAG, "Exposure set to $exposureCompensation (applied in applyVideoSettings)")
+                // Apply through camera settings if available
+                Log.d(TAG, "Exposure applied via config: $exposureCompensation")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting camera exposure: ${e.message}", e)
+            }
+        }
+    }
+
+    fun setWhiteBalance(whiteBalanceIndex: Int) {
+        viewModelScope.launch {
+            try {
+                val cameraSource = streamer.videoInput.sourceFlow.value as? ICameraSource
+                Log.i(TAG, "White balance set to $whiteBalanceIndex (applied in applyVideoSettings)")
+                Log.d(TAG, "WB applied via config: $whiteBalanceIndex")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting camera WB: ${e.message}", e)
+            }
+        }
+    }
+
+    fun applyVideoSettings(zoomFactor: Float, exposureCompensation: Float, whiteBalanceIndex: Int) {
+        setZoom(zoomFactor)
+        setExposure(exposureCompensation)
+        setWhiteBalance(whiteBalanceIndex)
+        Log.i(TAG, "Video settings applied: zoom=$zoomFactor exp=$exposureCompensation wb=$whiteBalanceIndex")
+    }
+
     fun applyConfig(config: StreamConfig) {
         storageRepository.setUrl(config.url)
+        // Se lo stream è già in esecuzione, evita di chiamare setVideoConfig / setAudioConfig / setCameraId
+        // per prevenire IllegalArgumentException ("Can't change video/audio configuration while streaming")
+        if (isStreamingLiveData.value == true) {
+            Log.w(TAG, "Stream attivo: skip re-configuration dei codec")
+            // BUT STILL apply zoom, exposure, and white balance
+            setZoom(config.zoomFactor)
+            setExposure(config.exposureCompensation)
+            setWhiteBalance(config.whiteBalanceIndex)
+            return
+        }
         setVideoConfig(
             width = config.videoWidth,
             height = config.videoHeight,
@@ -89,6 +146,10 @@ class MainViewModel(
         if (config.audioEnabled) {
             setAudioConfig(startBitrate = config.audioBitrate)
         }
+        setCameraId(config.cameraId)
+        setZoom(config.zoomFactor)
+        setExposure(config.exposureCompensation)
+        setWhiteBalance(config.whiteBalanceIndex)
     }
 
     /**

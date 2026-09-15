@@ -2,11 +2,16 @@ package io.github.thibaultbee.streampack.app
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.widget.AdapterView
+import android.widget.SeekBar
+import android.widget.ImageButton
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.annotation.RequiresPermission
@@ -15,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import io.github.thibaultbee.streampack.app.data.config.StreamConfig
 import io.github.thibaultbee.streampack.app.data.config.StreamConfigManager
 import io.github.thibaultbee.streampack.app.databinding.ActivityMainBinding
+import io.github.thibaultbee.streampack.app.databinding.ControlsPanelBinding
 import io.github.thibaultbee.streampack.app.utils.PermissionsManager
 import io.github.thibaultbee.streampack.app.utils.showDialog
 import io.github.thibaultbee.streampack.app.utils.toast
@@ -22,9 +28,11 @@ import io.github.thibaultbee.streampack.core.elements.sources.video.camera.exten
 import io.github.thibaultbee.streampack.core.streamers.lifecycle.StreamerLifeCycleObserver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
+    private lateinit var controlBinding: io.github.thibaultbee.streampack.app.databinding.ControlsPanelBinding
     private val viewModel: MainViewModel by viewModels {
         MainViewModelFactory(this.application)
     }
@@ -68,7 +76,6 @@ class MainActivity : AppCompatActivity() {
             if (isGranted) {
                 viewModel.startStream()
             } else {
-                binding.liveButton.isChecked = false
                 toast("Local network permission denied")
             }
         }
@@ -76,7 +83,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
+        controlBinding = ControlsPanelBinding.bind(binding.root.findViewById<View>(R.id.controlsPanel))
         setContentView(binding.root)
+        Timber.i("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+
+        binding.root.findViewById<ImageButton>(R.id.btnSettings)?.setOnClickListener { showConfigDialog() }
 
         loadAndApplyConfiguration(intent)
         bindProperties()
@@ -93,58 +104,68 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadAndApplyConfiguration(intent: Intent?) {
         currentConfig = StreamConfigManager.loadConfig(this, intent)
+        Timber.i("Loaded config URL: ${currentConfig.url}")
         viewModel.applyConfig(currentConfig)
+        // Wire controls panel to viewModel
+        controlBinding.btnZoomIn.setOnClickListener { viewModel.setZoom(1.2f) }
+        controlBinding.btnZoomOut.setOnClickListener { viewModel.setZoom(0.8f) }
+        controlBinding.seekExposure.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    val exp = ((progress / 25.0) - 2.0).toFloat()
+                    viewModel.setExposure(exp)
+                    controlBinding.seekExposureValue.text = exp.toString()
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        controlBinding.spinnerWB.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                        viewModel.setWhiteBalance(position)
+                    }
+                    override fun onNothingSelected(parent: AdapterView<*>?) {}
+                })
     }
 
     private fun bindProperties() {
-        binding.liveButton.setOnCheckedChangeListener { view, isChecked ->
-            if (view.isPressed) {
-                if (isChecked) {
-                    startStreamingWithPermissionCheck()
+            lifecycle.addObserver(streamerLifeCycleObserver)
+            configureStreamer()
+
+            viewModel.closedThrowableLiveData.observe(this) { error ->
+                Timber.e(error, "Disconnect")
+                toast("Disconnect: ${error.message}")
+                handleAutoReconnect()
+            }
+
+            viewModel.pendingConnectionFailedLiveData.observe(this) { error ->
+                Timber.e(error, "Connection error")
+                toast("Connection error: ${error.message}")
+                handleAutoReconnect()
+            }
+
+            viewModel.throwableLiveData.observe(this) { error ->
+                Timber.e(error, "Error")
+                toast("Error: ${error.message}")
+            }
+
+            viewModel.isStreamingLiveData.observe(this) { isStreaming ->
+                if (isStreaming) {
+                    lockOrientation()
                 } else {
-                    viewModel.stopStream()
+                    unlockOrientation()
                 }
             }
-        }
 
-        lifecycle.addObserver(streamerLifeCycleObserver)
-        configureStreamer()
-
-        viewModel.closedThrowableLiveData.observe(this) { error ->
-            Log.e(TAG, "Disconnect: $error")
-            toast("Disconnect: ${error.message}")
-            handleAutoReconnect()
-        }
-
-        viewModel.pendingConnectionFailedLiveData.observe(this) { error ->
-            Log.e(TAG, "Connection error: $error")
-            toast("Connection error: ${error.message}")
-            handleAutoReconnect()
-        }
-
-        viewModel.throwableLiveData.observe(this) { error ->
-            Log.e(TAG, "Error: $error")
-            toast("Error: ${error.message}")
-        }
-
-        viewModel.isStreamingLiveData.observe(this) { isStreaming ->
-            if (isStreaming) {
-                lockOrientation()
-            } else {
-                unlockOrientation()
+            viewModel.isTryingConnectionLiveData.observe(this) { isWaiting ->
+                // Streaming starts automatically; no manual toggle
             }
-            binding.liveButton.isChecked = isStreaming || (viewModel.isTryingConnectionLiveData.value == true)
         }
-
-        viewModel.isTryingConnectionLiveData.observe(this) { isWaiting ->
-            binding.liveButton.isChecked = isWaiting || (viewModel.isStreamingLiveData.value == true)
-        }
-    }
 
     private fun startStreamingWithPermissionCheck() {
         lifecycleScope.launch {
             if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) && viewModel.needsLocalNetworkPermission()) {
-                Log.i(TAG, "Local network permission is required for Android 37+")
+                Timber.i("Local network permission is required for Android 37+")
                 requestLocalNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
             } else {
                 viewModel.startStream()
@@ -155,10 +176,10 @@ class MainActivity : AppCompatActivity() {
     private fun handleAutoReconnect() {
         if (currentConfig.autoReconnect) {
             lifecycleScope.launch {
-                Log.i(TAG, "Scheduling auto-reconnect in ${currentConfig.reconnectIntervalSec} seconds...")
+                Timber.i("Scheduling auto-reconnect in ${currentConfig.reconnectIntervalSec} seconds...")
                 delay(currentConfig.reconnectIntervalSec * 1000L)
                 if (viewModel.isStreamingLiveData.value != true) {
-                    Log.i(TAG, "Attempting auto-reconnect now...")
+                    Timber.i("Attempting auto-reconnect now...")
                     startStreamingWithPermissionCheck()
                 }
             }
@@ -183,6 +204,12 @@ class MainActivity : AppCompatActivity() {
         setAVSource()
         setStreamerView()
 
+        // Avvia automaticamente la trasmissione: l'app deve sempre registrare
+        lifecycleScope.launch {
+            delay(500)
+            startStreamingWithPermissionCheck()
+        }
+
         if (currentConfig.autostart && !isAutoStartTriggered) {
             isAutoStartTriggered = true
             triggerAutoStart()
@@ -191,7 +218,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun triggerAutoStart() {
         lifecycleScope.launch {
-            Log.i(TAG, "Triggering auto-start stream in ${currentConfig.autostartDelayMs} ms to target: ${currentConfig.url}")
+            Timber.i("Triggering auto-start stream in ${currentConfig.autostartDelayMs} ms to target: ${currentConfig.url}")
             delay(currentConfig.autostartDelayMs)
             startStreamingWithPermissionCheck()
         }
@@ -217,6 +244,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun toast(message: String) {
         runOnUiThread { applicationContext.toast(message) }
+    }
+    private fun showConfigDialog() {
+        Timber.i("Config clicked — ver 1.0")
     }
 
     companion object {

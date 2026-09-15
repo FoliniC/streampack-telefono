@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@android:color/transparent">
+
+        <!-- Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_dialog_info"
+                android:tint="#4A9EFF"
+                android:layout_marginEnd="10dp"/>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- Titolo COPIABILE -->
+                <TextView
+                    android:id="@+id/configTitleText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="StreamPack Configuration"
+                    android:textColor="#131929"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="true"
+                    android:layout_marginBottom="2dp"/>
+
+                <!-- Versione COPIABILE -->
+                <TextView
+                    android:id="@+id/configVersionText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Loading version..."
+                    android:textColor="#6B7A8F"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="true"/>
+
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#E3E7ED"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Main Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#FFFFFF"
+            android:layout_marginBottom="12dp"
+            android:elevation="2dp"
+            android:padding="14dp">
+
+            <!-- URL -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connection Settings"
+                android:textColor="#0D47A1"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp"/>
+
+            <EditText
+                android:id="@+id/configUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textUri"
+                android:textColor="#212121"
+                android:textSize="12sp"
+                android:padding="8dp"
+                android:background="#F5F5F5"
+                android:hint="rtmp://10.203.33.169:1935/live/telefono"
+                android:textIsSelectable="true"/>
+
+            <!-- Video Settings -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Video Settings"
+                android:textColor="#0D47A1"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <EditText
+                    android:id="@+id/configWidth"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="number"
+                    android:textColor="#212121"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:background="#F5F5F5"
+                    android:hint="Width"
+                    android:layout_marginEnd="8dp"/>
+
+                <EditText
+                    android:id="@+id/configHeight"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="number"
+                    android:textColor="#212121"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:background="#F5F5F5"
+                    android:hint="Height"
+                    android:layout_marginStart="8dp"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <EditText
+                    android:id="@+id/configFps"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="number"
+                    android:textColor="#212121"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:background="#F5F5F5"
+                    android:hint="FPS"
+                    android:layout_marginEnd="8dp"/>
+
+                <EditText
+                    android:id="@+id/configBitrate"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="number"
+                    android:textColor="#212121"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:background="#F5F5F5"
+                    android:hint="Bitrate (kbps)"
+                    android:layout_marginStart="8dp"/>
+            </LinearLayout>
+
+            <!-- Camera Settings -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Camera Settings"
+                android:textColor="#0D47A1"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"/>
+
+            <Spinner
+                android:id="@+id/configCameraSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#F5F5F5"
+                android:padding="12dp"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- Camera Controls -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Camera Controls"
+                android:textColor="#0D47A1"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <EditText
+                    android:id="@+id/configZoom"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="numberDecimal"
+                    android:textColor="#212121"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:background="#F5F5F5"
+                    android:hint="Zoom Factor"
+                    android:layout_marginEnd="8dp"/>
+
+                <EditText
+                    android:id="@+id/configExposure"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="numberDecimal|numberSigned"
+                    android:textColor="#212121"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:background="#F5F5F5"
+                    android:hint="Exposure"
+                    android:layout_marginStart="8dp"/>
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="White Balance Mode"
+                android:textColor="#0D47A1"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="8dp"/>
+
+            <Spinner
+                android:id="@+id/configWbSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#F5F5F5"
+                android:padding="12dp"/>
+        </LinearLayout>
+
+        <!-- Action Buttons Row: -Zoom +Zoom Reset Salva Fullscreen Chiudi -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:gravity="center">
+
+            <Button
+                android:id="@+id/zoomMinusBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textSize="16sp"
+                android:layout_margin="4dp"/>
+
+            <Button
+                android:id="@+id/zoomPlusBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="+"
+                android:textSize="16sp"
+                android:layout_margin="4dp"/>
+
+            <Button
+                android:id="@+id/resetBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Reset"
+                android:textSize="14sp"
+                android:layout_margin="4dp"/>
+
+            <Button
+                android:id="@+id/saveBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Salva"
+                android:textSize="14sp"
+                android:layout_margin="4dp"
+                android:background="#4CAF50"
+                android:textColor="#FFFFFF"/>
+
+            <Button
+                android:id="@+id/fullscreenBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Full screen"
+                android:textSize="14sp"
+                android:layout_margin="4dp"
+                android:background="#2196F3"
+                android:textColor="#FFFFFF"/>
+
+            <Button
+                android:id="@+id/closeBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Chiudi"
+                android:textSize="14sp"
+                android:layout_margin="4dp"
+                android:background="#f44336"
+                android:textColor="#FFFFFF"/>
+        </LinearLayout>
+
+<!-- Log TextView (workaround per problemi permessi sdcard) -->
+        <TextView
+            android:id="@+id/logTextView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="8dp"
+            android:background="#F5F5F5"
+            android:fontFamily="monospace"
+            android:gravity="top"
+            android:padding="8dp"
+            android:textColor="#212121"
+            android:textSize="10sp"
+            android:textIsSelectable="true" />
+    </LinearLayout>
+</ScrollView>

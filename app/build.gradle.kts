@@ -13,12 +13,14 @@ android {
 
     defaultConfig {
         applicationId = "io.github.thibaultbee.streampack.app"
-        minSdk = 24
-        targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        minSdk = 21
+        targetSdk = 33
+        val runNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "0"
+        versionCode = if (runNumber.toInt() > 0) runNumber.toInt() else 496752 
+        versionName = if (runNumber.toInt() > 0) "1.0.${runNumber}" else "1.0.dev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        multiDexEnabled = true
     }
 
     signingConfigs {
@@ -52,6 +54,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 
@@ -64,11 +67,15 @@ dependencies {
     // TODO: Only needed for SRT live streaming: remove if you don't need it
     implementation(libs.streampack.srt)
 
+    // Timber - clean logging API
+    implementation("com.jakewharton.timber:timber:5.0.1")
+
     implementation(libs.core.ktx)
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.constraintlayout)
     implementation(libs.lifecycle.runtime.ktx)
+    implementation("androidx.multidex:multidex:2.0.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
