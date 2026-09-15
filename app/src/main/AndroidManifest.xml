@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="io.github.thibaultbee.streampack.app"
-    tools:overrideLibrary="com.google.android.material,androidx.core">
+    tools:overrideLibrary="com.google.android.material,androidx.core"
 
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="35" />
 
@@ -34,3 +34,5 @@
         </activity>
     </application>
 </manifest>
+
+add_permission=true
