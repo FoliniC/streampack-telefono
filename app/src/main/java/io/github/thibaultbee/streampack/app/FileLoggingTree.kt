@@ -17,7 +17,6 @@ class FileLoggingTree(private val context: Application) : Timber.Tree() {
                 writer.append(logMessage)
             }
             
-            // Log success to system log for verification
             android.util.Log.d("FileLoggingTree", "Successfully wrote log to: ${logFile.absolutePath}")
         } catch (e: java.io.IOException) {
             android.util.Log.e("FileLoggingTree", "Error writing to log file: ${e.message}", e)
