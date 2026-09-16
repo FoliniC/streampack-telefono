@@ -58,6 +58,19 @@ android {
     }
 }
 
+// ✅ CONFIGURE APK NAMING
+// L'API "applicationVariants" \u00e8 deprecata (vedi warning nel log di build) ed
+// "archiveFileName" non esiste sugli output di variante: apparteneva ai task
+// Jar/Zip, non a BaseVariantOutput. Si usa quindi AndroidComponentsExtension,
+// che \u00e8 anche l'API consigliata da AGP per questo caso.
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("StreamPack.apk")
+        }
+    }
+}
+
 dependencies {
     implementation(libs.streampack.core)
     // For the `PreviewView`
