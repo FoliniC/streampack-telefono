@@ -29,229 +29,207 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-class MainActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var controlBinding: ControlsPanelBinding
-    private val viewModel: MainViewModel by viewModels {
-        MainViewModelFactory(this.application)
-    }
+/**
+ * Enhanced log writer with thread pooling and comprehensive error handling
+ * for MediaStore-based logging operations
+ */
+class MediaStoreLoggingTree(
+    private val context: Context,
+    private val fileName: String = "app_log.txt"
+) : Timber.Tree() {
 
-    private var currentConfig: StreamConfig = StreamConfig()
-    private var isAutoStartTriggered = false
+    /**
+     * Thread pool executor for log writing operations
+     * Prevents unbounded thread creation and provides better resource management
+     */
+    private val logWriteExecutor = java.util.concurrent.Executors.newFixedThreadPool(4)
 
-    private val streamerRequiredPermissions =
-        buildList {
-            add(Manifest.permission.CAMERA)
-            add(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // NECESSARY FOR SHOWING STREAMING FOREGROUND SERVICE NOTIFICATION
-                add(Manifest.permission.POST_NOTIFICATIONS)
-            }
+    override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+        // Filter out logs below INFO level for performance
+        if (priority < Log.INFO) return
+
+        // Generate timestamp and format log entry
+        val timestamp = java.text.SimpleDateFormat(
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            java.util.Locale.US
+        ).format(java.util.Date())
+
+        // Map priority codes to single-character representations
+        val priorityChar = when (priority) {
+            Log.DEBUG -> "D"
+            Log.INFO -> "I"
+            Log.WARN -> "W"
+            Log.ERROR -> "E"
+            else -> "?"
         }
 
-    @SuppressLint("MissingPermission")
-    private val permissionsManager = PermissionsManager(
-        this,
-        streamerRequiredPermissions,
-        onAllGranted = { onPermissionsGranted() },
-        onShowPermissionRationale = { permissions, onRequiredPermissionLastTime ->
-            showDialog(
-                title = "Permissions denied",
-                message = "Explain why you need to grant $permissions permissions to stream",
-                positiveButtonText = R.string.accept,
-                onPositiveButtonClick = { onRequiredPermissionLastTime() },
-                negativeButtonText = R.string.denied
-            )
-        },
-        onDenied = {
-            showDialog(
-                "Permissions denied",
-                "You need to grant all permissions to stream",
-                positiveButtonText = 0,
-                negativeButtonText = 0
-            )
-        })
+        // Format log entry with timestamp, priority, tag, and message
+        val logEntry = "$timestamp $priorityChar/$tag: $message" +
+                       (t?.let { "\n${Log.getStackTraceString(it)}" } ?: "")
 
-    private val requestLocalNetworkPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) {
-                viewModel.startStream()
-            } else {
-                toast("Local network permission denied")
-            }
-        }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        controlBinding = ControlsPanelBinding.bind(binding.root.findViewById<View>(R.id.controlsPanel))
-        setContentView(binding.root)
-        Timber.i("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-
-        binding.root.findViewById<ImageButton>(R.id.btnSettings)?.setOnClickListener { showConfigDialog() }
-
-        loadAndApplyConfiguration(intent)
-        bindProperties()
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        loadAndApplyConfiguration(intent)
-        if (currentConfig.autostart) {
-            triggerAutoStart()
+        // Submit log writing task to thread pool
+        logWriteExecutor.execute {
+            writeToMediaStore(logEntry)
         }
     }
 
-    private fun loadAndApplyConfiguration(intent: Intent?) {
-        currentConfig = StreamConfigManager.loadConfig(this, intent)
-        Timber.i("Loaded config URL: ${currentConfig.url}")
-        viewModel.applyConfig(currentConfig)
-        // Wire controls panel to viewModel
-        controlBinding.btnZoomIn.setOnClickListener { viewModel.setZoom(1.2f) }
-        controlBinding.btnZoomOut.setOnClickListener { viewModel.setZoom(0.8f) }
-        controlBinding.seekExposure.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    val exp = ((progress / 25.0) - 2.0).toFloat()
-                    viewModel.setExposure(exp)
-                    controlBinding.seekExposureValue.text = exp.toString()
+    /**
+     * Core log writing function with enhanced error handling and recovery
+     */
+    private fun writeToMediaStore(content: String) {
+        try {
+            // Route to appropriate storage method based on Android version
+            val success = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                    writeViaMediaStore(content)
+                }
+                else -> {
+                    writeViaLegacyFile(content)
                 }
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-        controlBinding.spinnerWB.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-                    override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                        viewModel.setWhiteBalance(position)
-                    }
-                    override fun onNothingSelected(parent: AdapterView<*>?) {}
-                })
-    }
 
-    private fun bindProperties() {
-        configureStreamer()
-
-        viewModel.closedThrowableLiveData.observe(this) { error ->
-            Timber.e(error, "Disconnect")
-            toast("Disconnect: ${error.message}")
-            handleAutoReconnect()
-        }
-
-        viewModel.pendingConnectionFailedLiveData.observe(this) { error ->
-            Timber.e(error, "Connection error")
-            toast("Connection error: ${error.message}")
-            handleAutoReconnect()
-        }
-
-        viewModel.throwableLiveData.observe(this) { error ->
-            Timber.e(error, "Error")
-            toast("Error: ${error.message}")
-        }
-
-        viewModel.isStreamingLiveData.observe(this) { isStreaming ->
-            if (isStreaming) {
-                lockOrientation()
-                StreamingForegroundService.start(applicationContext)
-            } else {
-                unlockOrientation()
-                StreamingForegroundService.stop(applicationContext)
+            // Log write operation result for debugging
+            if (!success) {
+                Log.w("MediaStoreLoggingTree", "Log write operation failed for content: $content")
             }
-        }
-
-        viewModel.isTryingConnectionLiveData.observe(this) { isWaiting ->
-            // Streaming starts automatically; no manual toggle
+        } catch (e: Exception) {
+a            // Comprehensive error handling with context information
+            Log.e("MediaStoreLoggingTree", "Critical error in log writing: ${e.message}", e)
+            // Implement fallback logging mechanism
+            writeToFallbackStorage(content, e)
         }
     }
 
-    private fun startStreamingWithPermissionCheck() {
-        lifecycleScope.launch {
-            if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) && viewModel.needsLocalNetworkPermission()) {
-                Timber.i("Local network permission is required for Android 37+")
-                requestLocalNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
-            } else {
-                viewModel.startStream()
+    /**
+     * Write log entries to MediaStore (Android 10+ devices)
+     * Uses Android's standard MediaStore API for external storage
+     */
+    private fun writeViaMediaStore(content: String): Boolean {
+        return try {
+            val resolver = context.contentResolver
+            val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+
+            // Check if file already exists in MediaStore
+            val existingUri = findExistingFileUri(resolver, collection)
+
+            val uri: android.net.Uri? = existingUri ?: run {
+                // Create new media entry in MediaStore
+                val values = android.content.ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                }
+                resolver.insert(collection, values)
             }
-        }
-    }
 
-    private fun handleAutoReconnect() {
-        if (currentConfig.autoReconnect) {
-            lifecycleScope.launch {
-                Timber.i("Scheduling auto-reconnect in ${currentConfig.reconnectIntervalSec} seconds...")
-                delay(currentConfig.reconnectIntervalSec * 1000L)
-                if (viewModel.isStreamingLiveData.value != true) {
-                    Timber.i("Attempting auto-reconnect now...")
-                    startStreamingWithPermissionCheck()
+            // Write content to the media entry
+            uri?.let {
+                resolver.openOutputStream(it, "wa")?.use { outputStream ->
+                    outputStream.write(content.toByteArray())
                 }
             }
+
+            // Return success status
+            uri != null
+        } catch (e: Exception) {
+            Log.e("MediaStoreLoggingTree", "MediaStore write error", e)
+            false
         }
     }
 
-    private fun lockOrientation() {
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
-    }
+    /**
+     * Legacy file system fallback for pre-Android 10 devices
+     * Uses traditional file system operations for older Android versions
+     */
+    private fun writeViaLegacyFile(content: String): Boolean {
+        try {
+            // Get external storage directory for downloads
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS
+            )
 
-    private fun unlockOrientation() {
-        requestedOrientation = ApplicationConstants.supportedOrientation
-    }
+            // Ensure directory exists
+            if (!dir.exists()) {
+                val created = dir.mkdirs()
+                if (!created) {
+                    Log.e("media_store_logging", "Failed to create directory: ${dir.absolutePath}")
+                    return false
+                }
+            }
 
-    override fun onStart() {
-        super.onStart()
-        permissionsManager.requestPermissions()
-    }
+            // Write to file using append mode
+            val logFile = java.io.File(dir, fileName)
+            java.io.FileWriter(logFile, true).use { writer ->
+                writer.write(content)
+                writer.flush()
+            }
 
-    @RequiresPermission(allOf = [Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO])
-    private fun onPermissionsGranted() {
-        setAVSource()
-        setStreamerView()
-
-        // Streaming starts automatically; no manual toggle
-        lifecycleScope.launch {
-            delay(500)
-            startStreamingWithPermissionCheck()
-        }
-
-        if (currentConfig.autostart && !isAutoStartTriggered) {
-            isAutoStartTriggered = true
-            triggerAutoStart()
-        }
-    }
-
-    private fun triggerAutoStart() {
-        lifecycleScope.launch {
-            Timber.i("Triggering auto-start stream in ${currentConfig.autostartDelayMs} ms to target: ${currentConfig.url}")
-            delay(currentConfig.autostartDelayMs)
-            startStreamingWithPermissionCheck()
+            return true
+        } catch (e: Exception) {
+            Log.e("MediaStoreLoggingTree", "Legacy file write error", e)
+            return false
         }
     }
 
-    @RequiresPermission(allOf = [Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO])
-    private fun setAVSource() {
-        viewModel.setAudioSource()
-        val targetCam = if (currentConfig.cameraId.isNotEmpty()) currentConfig.cameraId else defaultCameraId
-        viewModel.setCameraId(targetCam)
-    }
+    /**
+     * Fallback storage mechanism when primary log writing fails
+     * Attempts multiple fallback strategies to ensure logs are not lost
+     */
+    private fun writeToFallbackStorage(content: String, originalError: Exception) {
+        try {
+            // Try to write to internal storage as last resort
+            val internalDir = context.filesDir
+            val fallbackFile = java.io.File(internalDir, "log_fallback.txt")
 
-    private fun setStreamerView() {
-        lifecycleScope.launch {
-            binding.preview.setVideoSourceProvider(viewModel.streamer)
+            java.io.FileWriter(fallbackFile, true).use { writer ->
+                val fallbackEntry = "FALLBACK: $content (Original error: ${originalError.message})\n"
+                writer.write(fallbackEntry)
+                writer.flush()
+            }
+
+            Log.w("MediaStoreLoggingTree", "Fallback log storage successful")
+        } catch (fallbackError: Exception) {
+            // If even fallback fails, log to console for debugging
+            System.err.println("CRITICAL: Log writing completely failed. Original error: ${originalError.message}")
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun configureStreamer() {
-        viewModel.applyConfig(currentConfig)
-    }
+    /**
+     * Find existing log file in MediaStore
+     * Searches for file with matching name and path in external storage
+     */
+    private fun findExistingFileUri(
+        resolver: android.content.ContentResolver,
+        collection: android.net.Uri
+    ): android.net.Uri? {
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
+                        "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+        val selectionArgs = arrayOf(
+            fileName,
+            "%${android.os.Environment.DIRECTORY_DOWNLOADS}%"
+        )
 
-    private fun toast(message: String) {
-        runOnUiThread { applicationContext.toast(message) }
+        return resolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getLong(
+                    cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                )
+                return ContentUris.withAppendedId(collection, id)
+            }
+            null
+        }
     }
-    private fun showConfigDialog() {
-        Timber.i("Config clicked — ver 1.0")
-    }
+}
 
-    companion object {
-        private const val TAG = "MainActivity"
+class StreamPack : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        if (BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+            Timber.plant(MediaStoreLoggingTree(this))
+        } else {
+            Timber.plant(MediaStoreLoggingTree(this))
+        }
     }
 }
