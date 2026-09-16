@@ -25,14 +25,13 @@ import io.github.thibaultbee.streampack.app.utils.PermissionsManager
 import io.github.thibaultbee.streampack.app.utils.showDialog
 import io.github.thibaultbee.streampack.app.utils.toast
 import io.github.thibaultbee.streampack.core.elements.sources.video.camera.extensions.defaultCameraId
-import io.github.thibaultbee.streampack.core.streamers.lifecycle.StreamerLifeCycleObserver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private lateinit var controlBinding: io.github.thibaultbee.streampack.app.databinding.ControlsPanelBinding
+    private lateinit var controlBinding: ControlsPanelBinding
     private val viewModel: MainViewModel by viewModels {
         MainViewModelFactory(this.application)
     }
@@ -41,10 +40,14 @@ class MainActivity : AppCompatActivity() {
     private var isAutoStartTriggered = false
 
     private val streamerRequiredPermissions =
-        listOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
+        buildList {
+            add(Manifest.permission.CAMERA)
+            add(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // NECESSARY FOR SHOWING STREAMING FOREGROUND SERVICE NOTIFICATION
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
     @SuppressLint("MissingPermission")
     private val permissionsManager = PermissionsManager(
@@ -68,8 +71,6 @@ class MainActivity : AppCompatActivity() {
                 negativeButtonText = 0
             )
         })
-
-    private val streamerLifeCycleObserver by lazy { StreamerLifeCycleObserver(viewModel.streamer) }
 
     private val requestLocalNetworkPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -129,38 +130,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindProperties() {
-            lifecycle.addObserver(streamerLifeCycleObserver)
-            configureStreamer()
+        configureStreamer()
 
-            viewModel.closedThrowableLiveData.observe(this) { error ->
-                Timber.e(error, "Disconnect")
-                toast("Disconnect: ${error.message}")
-                handleAutoReconnect()
-            }
+        viewModel.closedThrowableLiveData.observe(this) { error ->
+            Timber.e(error, "Disconnect")
+            toast("Disconnect: ${error.message}")
+            handleAutoReconnect()
+        }
 
-            viewModel.pendingConnectionFailedLiveData.observe(this) { error ->
-                Timber.e(error, "Connection error")
-                toast("Connection error: ${error.message}")
-                handleAutoReconnect()
-            }
+        viewModel.pendingConnectionFailedLiveData.observe(this) { error ->
+            Timber.e(error, "Connection error")
+            toast("Connection error: ${error.message}")
+            handleAutoReconnect()
+        }
 
-            viewModel.throwableLiveData.observe(this) { error ->
-                Timber.e(error, "Error")
-                toast("Error: ${error.message}")
-            }
+        viewModel.throwableLiveData.observe(this) { error ->
+            Timber.e(error, "Error")
+            toast("Error: ${error.message}")
+        }
 
-            viewModel.isStreamingLiveData.observe(this) { isStreaming ->
-                if (isStreaming) {
-                    lockOrientation()
-                } else {
-                    unlockOrientation()
-                }
-            }
-
-            viewModel.isTryingConnectionLiveData.observe(this) { isWaiting ->
-                // Streaming starts automatically; no manual toggle
+        viewModel.isStreamingLiveData.observe(this) { isStreaming ->
+            if (isStreaming) {
+                lockOrientation()
+                StreamingForegroundService.start(applicationContext)
+            } else {
+                unlockOrientation()
+                StreamingForegroundService.stop(applicationContext)
             }
         }
+
+        viewModel.isTryingConnectionLiveData.observe(this) { isWaiting ->
+            // Streaming starts automatically; no manual toggle
+        }
+    }
 
     private fun startStreamingWithPermissionCheck() {
         lifecycleScope.launch {
@@ -204,7 +206,7 @@ class MainActivity : AppCompatActivity() {
         setAVSource()
         setStreamerView()
 
-        // Avvia automaticamente la trasmissione: l'app deve sempre registrare
+        // Streaming starts automatically; no manual toggle
         lifecycleScope.launch {
             delay(500)
             startStreamingWithPermissionCheck()
